@@ -9,12 +9,20 @@ const { v4: uuid } = require('uuid');
 const transcription = require('./services/transcription');
 const editor = require('./services/editor');
 
+// These folders are NOT committed to git (git doesn't track empty directories),
+// so on a fresh Render deploy they don't exist yet. Without this, multer's upload
+// save and FFmpeg's output write both fail with "No such file or directory".
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const OUTPUTS_DIR = path.join(__dirname, 'outputs');
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+fs.mkdirSync(OUTPUTS_DIR, { recursive: true });
+
 const app = express();
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(express.json());
-app.use('/outputs', express.static(path.join(__dirname, 'outputs')));
+app.use('/outputs', express.static(OUTPUTS_DIR));
 
-const upload = multer({ dest: path.join(__dirname, 'uploads') });
+const upload = multer({ dest: UPLOADS_DIR });
 
 // In-memory job store. For production, swap this for Redis/a database —
 // but this alone is enough to get real processing working end-to-end.
@@ -82,7 +90,7 @@ async function processJob(jobId, inputPath, preset) {
   let srtPath = null;
   if (preset.captions?.enabled && words.length) {
     setJob(jobId, { stage: 'Generating captions', progress: 55 });
-    srtPath = path.join(__dirname, 'outputs', `${jobId}.srt`);
+    srtPath = path.join(OUTPUTS_DIR, `${jobId}.srt`);
     fs.writeFileSync(srtPath, transcription.wordsToSRT(words));
   }
 
@@ -92,7 +100,7 @@ async function processJob(jobId, inputPath, preset) {
   const logoPath = null;
 
   setJob(jobId, { stage: 'Rendering video', progress: 65 });
-  const outputPath = path.join(__dirname, 'outputs', `${jobId}.mp4`);
+  const outputPath = path.join(OUTPUTS_DIR, `${jobId}.mp4`);
   await editor.renderVideo({
     inputPath,
     outputPath,
